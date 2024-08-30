@@ -7,6 +7,7 @@ using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Configuration;
 using System.IdentityModel.Tokens.Jwt;
+using Microsoft.AspNetCore.Authorization;
 
 namespace JwtWebApi.Controllers
 {
@@ -17,10 +18,34 @@ namespace JwtWebApi.Controllers
         public static User user = new User();
 
         private readonly IConfiguration configuration;
+        private readonly IUserService userService;
 
-        public AuthController(IConfiguration configuration)
+        public AuthController(IConfiguration configuration, IUserService userService)
         {
             this.configuration = configuration;
+            this.userService = userService;
+        }
+
+        [HttpGet, Authorize]
+        public ActionResult<object> GetMe()
+        {
+            var userName = User?.Identity?.Name;
+            var userName2 = User?.FindFirstValue(ClaimTypes.Name);
+            var role = User?.FindFirstValue(ClaimTypes.Role);
+            
+            return Ok(new
+            {
+                userName, 
+                userName2,
+                role
+            });
+        }
+
+        [HttpGet, Authorize]
+        public ActionResult<string> GetUs()
+        {
+            var userName = userService.GetMyName();
+            return Ok(userName);
         }
 
         [HttpPost("register")]
@@ -31,7 +56,6 @@ namespace JwtWebApi.Controllers
             user.PasswordHash = passwordHash;
             user.PasswordSalt = passwordSalt;
             return Ok(user);
-
         }
 
         [HttpPost("login")]
@@ -49,7 +73,6 @@ namespace JwtWebApi.Controllers
 
             string token = CreateToken(user);
             return Ok(token);
-
         }
 
         private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
@@ -60,6 +83,7 @@ namespace JwtWebApi.Controllers
                 passwordHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
             }
         } 
+
         private bool VerifyPasswordHash(string password, byte[] passwordHash, byte[] passwordSalt)
         {
             using (var hmac = new HMACSHA512(passwordSalt))
@@ -68,20 +92,19 @@ namespace JwtWebApi.Controllers
                 return computedHash.SequenceEqual(passwordHash);
             }
         }
+
         private string CreateToken(User user)
         {
             List<Claim> claims = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Role, "Admin")                                                                               
+                new Claim(ClaimTypes.Role, "Admin")
                // new Claim(ClaimTypes.Role, "OrdinaryUser"),
+               //new Claim(ClaimTypes.NameIdentifier,Id)
             };
-
             var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(
                 configuration.GetSection("AppSettings:Token").Value));
-
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
-
             var token = new JwtSecurityToken(
                 claims: claims,
                 expires: DateTime.Now.AddDays(1),
